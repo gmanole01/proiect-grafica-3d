@@ -1,14 +1,5 @@
-/* Deplasarea observatorului intr-o scena 3D
-SURSA:  lighthouse3D:  http://www.lighthouse3d.com/tutorials/glut-tutorial/keyboard-example-moving-around-the-world/
-Elemente de retinut:
-- folosirea functiilor de desenare pentru a schita obiecte 3D
-- schimbarea pozitiei observatorului se face in functia gluLookAt
-- folosirea glutSpecialFunc si glutKeyboardFunc pentru interactiunea cu tastatura
-*/
-
 #include <gl/freeglut.h>
 #include <gl/glut.h>
-#include <glfw/glfw3.h>
 #include <math.h>
 #include "SOIL.h"
 #include <stdio.h>
@@ -46,7 +37,6 @@ float cameraDirectionZ = -1.0f;
 
 int fast = 0;
 
-// Poziția curentă a mouse-ului
 int mouseX;
 int mouseY;
 
@@ -67,13 +57,6 @@ void initStrips() {
 	}
 }
 
-// angle of rotation for the camera direction
-float camera_angle = M_PI;
-// actual vector representing the camera's direction
-float camera_lx = 0.0f, camera_lz = 1.0f;
-// XZ position of the camera
-float camera_x = 0.0f, camera_z = 0.0f;
-
 typedef struct {
 	float r;
 	float g;
@@ -92,7 +75,7 @@ GLuint textureID[6]; //the array of texture IDs
 GLuint grass;
 
 GLuint loadTexture(const char* filepath) {
-	GLuint texture = SOIL_load_OGL_texture // load an image file directly as a new OpenGL texture
+	GLuint texture = SOIL_load_OGL_texture
 		(
 			filepath,
 			SOIL_LOAD_AUTO,
@@ -100,12 +83,10 @@ GLuint loadTexture(const char* filepath) {
 			SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
 		);
 	
-	// check for an error during the load process
 	if(texture == 0) {
 		printf("SOIL loading error: '%s'\n", SOIL_last_result());
 	}
 	
-	// Typical Texture Generation
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -129,7 +110,6 @@ void drawSkybox(float size) {
 	glTexCoord2f(0, 1); glVertex3f(halfSize, halfSize + yOffset, -halfSize);
 	glEnd();
 	
-	// Continue this for each face of the cube, binding the correct texture and setting the correct vertices.
 	// -x face
 	glBindTexture(GL_TEXTURE_2D, textureID[1]);
 	glBegin(GL_QUADS);
@@ -261,13 +241,13 @@ struct LightParams {
 	bool positive = true;
 	
 	// light spread
-	float spread = 2;
+	float spread = 4;
 	
 	// floor height
 	float floor = -3;
 	
 	// angle of the light
-	float angle = 1.4;
+	float angle = M_PI / 8;
 };
 
 void vertex(Point p) {
@@ -300,21 +280,12 @@ void drawCubicPipe(Point t[], Point b[]) {
 }
 
 void drawLight(LightParams p) {
-	float sx = p.p.x;
-	float sz = p.p.z;
-	if (p.onX) {
-		sz = p.p.z + p.w;
-	}
-	else {
-		sx = p.p.x + p.w;
-	}
-	
 	// [0] => top-left
 	Point t[] = {
 		p.p,
 		{p.p.x, p.p.y - p.h, p.p.z},
-		{sx, p.p.y - p.h, sz},
-		{sx, p.p.y, sz},
+		{p.p.x, p.p.y - p.h, p.p.z + p.w},
+		{p.p.x, p.p.y, p.p.z + p.w},
 	};
 	
 	float dist = (p.p.y - p.floor) / tan(p.angle);
@@ -323,50 +294,14 @@ void drawLight(LightParams p) {
 	float dh = p.h * p.spread;
 	
 	// coords of top-left projected on the floor
-	float dx = p.p.x;
-	float dz = p.p.z;
-	
-	if (!p.positive) {
-		dist = -dist;
-	}
-	
-	if (p.onX) {
-		dx += dist;
-	}
-	else {
-		dz += dist;
-	}
-	
-	if (p.positive) {
-		dx += dh / 4;
-		dz += dh / 4;
-	}
-	else {
-		dh = -dh;
-		dx += dh / 4;
-		dz += dh / 4;
-	}
-	
-	Point b2 = { dx, p.floor, dz };
-	Point b3 = { dx, p.floor, dz };
-	Point b4 = { dx, p.floor, dz };
-	
-	if (p.onX) {
-		b2.x -= dh;
-		b3.x -= dh;
-		b3.z += dw;
-		b4.z += dw;
-	}
-	else {
-		b2.z -= dh;
-		b3.z -= dh;
-		b3.x += dw;
-		b4.x += dw;
-	}
+	float dx = p.p.x + dist + dh / 4;
+	float dz = p.p.z - dh / 4;
 	
 	Point b[] = {
 		{ dx, p.floor, dz },
-		b2, b3, b4
+		{ dx - dh, p.floor, dz },
+		{ dx - dh, p.floor, dz + dw },
+		{ dx, p.floor, dz + dw }
 	};
 	
 	drawCubicPipe(t, b);
@@ -449,10 +384,13 @@ void drawHeadlights() {
 	glVertex3f(10.01, 0.9, -4.9);
 	glEnd();
 	
-	/*GLfloat black[] = { 0.0, 0.0, 0.0, 0.4 };
-	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
-	drawLight({ { 10.01, 2.4, 4.9 } });
-	drawLight({ { 10.01, 2.4, -2.9 } });*/
+	GLfloat black[] = { 1.0, 1.0, 0.0, 0.5 };
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, black);
+	drawLight({ { 10.01, 2.4, 2.9 } });
+	drawLight({ { 10.01, 2.4, -4.9 } });
+	
+	GLfloat normal[] = {1, 1, 1, 1};
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, normal);
 }
 
 void drawStoplights() {
@@ -737,15 +675,17 @@ void renderScene() {
 	// Reset transformations
 	glLoadIdentity();
 	
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_LIGHTING);
+	//transparenta
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_LIGHTING);
 	
 	// sursa de lumina 0
 	glEnable(GL_LIGHT0);
-	GLfloat pozitial0[] = { 1.0, 5.0, 3.0, 0.0 };
-	GLfloat alb[] = { 1.0, 1.0, 1.0, 0.0 };
-	GLfloat negru[] = { 0.0, 0.0, 0.0, 0.0 };
+	GLfloat pozitial0[] = { 1.0, 5.0, 3.0, 1.0 };
+	GLfloat alb[] = { 1.0, 1.0, 1.0, 1.0 };
+	GLfloat negru[] = { 0.0, 0.0, 0.0, 1.0 };
 	glLightfv(GL_LIGHT0, GL_POSITION, pozitial0);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, alb);
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, negru);
@@ -760,6 +700,14 @@ void renderScene() {
 			  cameraPositionX + cameraDirectionX, cameraPositionY + cameraDirectionY, cameraPositionZ + cameraDirectionZ,
 			  0.0f, 1.0f, 0.0f);
 	
+	//efect de ceata
+	GLfloat fogColor[] = { 0.9f, 0.9f, 0.9f, 1.0f };
+	glFogfv(GL_FOG_COLOR, fogColor);
+	glFogi(GL_FOG_MODE, GL_LINEAR);
+	glFogf(GL_FOG_START, 5.0f);
+	glFogf(GL_FOG_END, 600.0f);
+	glEnable(GL_FOG);
+	
 	// Draw the skybox
 	GLfloat white[4] = {1, 1, 1, 1};
 	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, white);
@@ -768,18 +716,6 @@ void renderScene() {
 	drawSkybox(500.0f);
 	glDepthFunc(GL_LESS);
 	glDisable(GL_TEXTURE_2D);
-	
-	//efect de ceata
-	GLfloat fogColor[] = { 0.9f, 0.9f, 0.9f, 1.0f }; // culoarea ceții
-	glFogfv(GL_FOG_COLOR, fogColor);
-	glFogi(GL_FOG_MODE, GL_LINEAR); // modul de interpolare liniară a ceții
-	glFogf(GL_FOG_START, 5.0f); // distanța de început a ceții
-	glFogf(GL_FOG_END, 600.0f); // distanța de sfârșit a ceții
-	glEnable(GL_FOG); // activarea ceții
-	
-	//transparenta
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	glEnable(GL_TEXTURE_2D);
 	renderTerrain();
@@ -940,9 +876,7 @@ void mouse(int x, int y) {
 	static float lastX = (float) screenWidth / 2;
 	static float lastY = (float) screenHeight / 2;
 	
-	// Verificăm dacă mouse-ul a ieșit în afara ferestrei
 	if (x < 30 || x >= (screenWidth - 30) || y < 30 || y >= (screenHeight - 30)) {
-		// Repozitionăm mouse-ul în centrul ferestrei
 		glutWarpPointer(screenWidth / 2, screenHeight / 2);
 		lastX = (float) screenWidth / 2;
 		lastY = (float) screenHeight / 2;
@@ -974,10 +908,8 @@ void mouse(int x, int y) {
 	float dirY = sin(radPitch);
 	float dirZ = sin(radYaw) * cos(radPitch);
 	
-	// Calculăm lungimea vectorului
 	float length = sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
 	
-	// Normalizăm vectorul
 	if (length != 0.0f)
 	{
 		dirX /= length;
@@ -1021,10 +953,8 @@ int main(int argc, char **argv) {
 	
 	glutPassiveMotionFunc(mouse);
 	
-	// OpenGL init
 	glEnable(GL_DEPTH_TEST);
 	
-	// enter GLUT event processing cycle
 	glutMainLoop();
 	
 	return 1;
