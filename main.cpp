@@ -17,9 +17,9 @@ Elemente de retinut:
 #define WINDOW_HEIGHT 850
 
 #define TILE_SIZE  3.0f
-#define TILE_COUNT 100
+#define TILE_COUNT 150
 
-#define DISCONTINOUS_STRIP_COUNT    200
+#define DISCONTINOUS_STRIP_COUNT    50
 #define DISCONTINOUS_STRIP_WIDTH    1
 #define DISCONTINOUS_STRIP_HEIGHT   5
 #define DISCONTINOUS_STRIP_SPACING  10
@@ -43,6 +43,8 @@ float cameraPositionZ = cameraDistance;
 float cameraDirectionX = 0.0f;
 float cameraDirectionY = 0.0f;
 float cameraDirectionZ = -1.0f;
+
+int fast = 0;
 
 // Poziția curentă a mouse-ului
 int mouseX;
@@ -108,11 +110,6 @@ GLuint loadTexture(const char* filepath) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	return texture;
-}
-
-void releaseTexture(unsigned char *image) {
-	SOIL_free_image_data(image);
-	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void drawSkybox(float size) {
@@ -243,6 +240,329 @@ void drawCuboid(float x, float y, float z, float dx, float dy, float dz) {
 	glEnd();
 }
 
+struct Point {
+	float x;
+	float y;
+	float z;
+};
+
+struct LightParams {
+	// light source coords (top left)
+	Point p;
+	
+	// true if dir is x, false if dir is z
+	bool onX = false;
+	
+	// light source size
+	float w = 2.0;
+	float h = 1.5;
+	
+	// true if light goes to inf, false if goes to -inf
+	bool positive = true;
+	
+	// light spread
+	float spread = 2;
+	
+	// floor height
+	float floor = -3;
+	
+	// angle of the light
+	float angle = 1.4;
+};
+
+void vertex(Point p) {
+	glVertex3f(p.x, p.y, p.z);
+}
+
+// call looking through the bottom
+void drawCubicPipe(Point t[], Point b[]) {
+	glBegin(GL_QUADS);
+	vertex(t[0]);
+	vertex(t[1]);
+	vertex(b[1]);
+	vertex(b[0]);
+	
+	vertex(t[1]);
+	vertex(t[2]);
+	vertex(b[2]);
+	vertex(b[1]);
+	
+	vertex(t[2]);
+	vertex(t[3]);
+	vertex(b[3]);
+	vertex(b[2]);
+	
+	vertex(t[3]);
+	vertex(t[0]);
+	vertex(b[0]);
+	vertex(b[3]);
+	glEnd();
+}
+
+void drawLight(LightParams p) {
+	float sx = p.p.x;
+	float sz = p.p.z;
+	if (p.onX) {
+		sz = p.p.z + p.w;
+	}
+	else {
+		sx = p.p.x + p.w;
+	}
+	
+	// [0] => top-left
+	Point t[] = {
+		p.p,
+		{p.p.x, p.p.y - p.h, p.p.z},
+		{sx, p.p.y - p.h, sz},
+		{sx, p.p.y, sz},
+	};
+	
+	float dist = (p.p.y - p.floor) / tan(p.angle);
+	
+	float dw = p.w * p.spread;
+	float dh = p.h * p.spread;
+	
+	// coords of top-left projected on the floor
+	float dx = p.p.x;
+	float dz = p.p.z;
+	
+	if (!p.positive) {
+		dist = -dist;
+	}
+	
+	if (p.onX) {
+		dx += dist;
+	}
+	else {
+		dz += dist;
+	}
+	
+	if (p.positive) {
+		dx += dh / 4;
+		dz += dh / 4;
+	}
+	else {
+		dh = -dh;
+		dx += dh / 4;
+		dz += dh / 4;
+	}
+	
+	Point b2 = { dx, p.floor, dz };
+	Point b3 = { dx, p.floor, dz };
+	Point b4 = { dx, p.floor, dz };
+	
+	if (p.onX) {
+		b2.x -= dh;
+		b3.x -= dh;
+		b3.z += dw;
+		b4.z += dw;
+	}
+	else {
+		b2.z -= dh;
+		b3.z -= dh;
+		b3.x += dw;
+		b4.x += dw;
+	}
+	
+	Point b[] = {
+		{ dx, p.floor, dz },
+		b2, b3, b4
+	};
+	
+	drawCubicPipe(t, b);
+}
+
+void drawWindows() {
+	glBegin(GL_QUADS);
+	
+	// front
+	glVertex3f(5.1, 7.0, 4.5);
+	glVertex3f(5.1, 7.0, -4.5);
+	glVertex3f(5.1, 3.0, -4.5);
+	glVertex3f(5.1, 3.0, 4.5);
+	
+	// back
+	glVertex3f(-5.1, 6.5, 4.0);
+	glVertex3f(-5.1, 6.5, -4.0);
+	glVertex3f(-5.1, 3.5, -4.0);
+	glVertex3f(-5.1, 3.5, 4.0);
+	
+	// front left
+	glVertex3f(4.5, 7.0, -5.1);
+	glVertex3f(4.5, 3.0, -5.1);
+	glVertex3f(0.5, 3.0, -5.1);
+	glVertex3f(0.5, 7.0, -5.1);
+	
+	// back left
+	glVertex3f(-0.5, 7.0, -5.1);
+	glVertex3f(-0.5, 3.0, -5.1);
+	glVertex3f(-4.5, 3.0, -5.1);
+	glVertex3f(-4.5, 7.0, -5.1);
+	
+	// front right
+	glVertex3f(4.5, 7.0, 5.1);
+	glVertex3f(0.5, 7.0, 5.1);
+	glVertex3f(0.5, 3.0, 5.1);
+	glVertex3f(4.5, 3.0, 5.1);
+	
+	// back right
+	glVertex3f(-0.5, 7.0, 5.1);
+	glVertex3f(-4.5, 7.0, 5.1);
+	glVertex3f(-4.5, 3.0, 5.1);
+	glVertex3f(-0.5, 3.0, 5.1);
+	
+	glEnd();
+}
+
+void drawWheels() {
+	glPushMatrix();
+	glTranslatef(7.0, -2, 3.5);
+	glutSolidCylinder(2, 2, 20, 20);
+	glPopMatrix();
+	
+	glPushMatrix();
+	glTranslatef(-7.0, -2, 3.5);
+	glutSolidCylinder(2, 2, 20, 20);
+	glPopMatrix();
+	
+	glPushMatrix();
+	glTranslatef(7.0, -2, -5.5);
+	glutSolidCylinder(2, 2, 20, 20);
+	glPopMatrix();
+	
+	glPushMatrix();
+	glTranslatef(-7.0, -2, -5.5);
+	glutSolidCylinder(2, 2, 20, 20);
+	glPopMatrix();
+}
+
+void drawHeadlights() {
+	glBegin(GL_QUADS);
+	glVertex3f(10.01, 2.4, 4.9);
+	glVertex3f(10.01, 2.4, 2.9);
+	glVertex3f(10.01, 0.9, 2.9);
+	glVertex3f(10.01, 0.9, 4.9);
+	
+	glVertex3f(10.01, 2.4, -4.9);
+	glVertex3f(10.01, 2.4, -2.9);
+	glVertex3f(10.01, 0.9, -2.9);
+	glVertex3f(10.01, 0.9, -4.9);
+	glEnd();
+	
+	/*GLfloat black[] = { 0.0, 0.0, 0.0, 0.4 };
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
+	drawLight({ { 10.01, 2.4, 4.9 } });
+	drawLight({ { 10.01, 2.4, -2.9 } });*/
+}
+
+void drawStoplights() {
+	glBegin(GL_QUADS);
+	glVertex3f(-10.01, 2.4, 4.9);
+	glVertex3f(-10.01, 2.4, 2.9);
+	glVertex3f(-10.01, 0.9, 2.9);
+	glVertex3f(-10.01, 0.9, 4.9);
+	
+	glVertex3f(-10.01, 2.4, -4.9);
+	glVertex3f(-10.01, 2.4, -2.9);
+	glVertex3f(-10.01, 0.9, -2.9);
+	glVertex3f(-10.01, 0.9, -4.9);
+	glEnd();
+}
+
+// -3
+void drawCar() {
+	GLfloat green[] = { 0.09, 0.56, 0.56, 1.0 };
+	GLfloat orange[] = { 0.87, 0.47, 0.10, 1.0 };
+	GLfloat glass[] = { 0.31, 0.76, 0.90, 1.0 };
+	GLfloat black[] = { 0.0, 0.0, 0.0, 1.0 };
+	GLfloat headlights[] = { 0.99, 0.96, 0.69, 1.0 };
+	GLfloat stoplights[] = { 0.74, 0.16, 0.24, 1.0 };
+	
+	// body
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, green);
+	drawCuboid(0, 0, 0, 20, 5, 10);
+	
+	// upper
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, orange);
+	drawCuboid(0, 5, 0, 10, 5, 10);
+	
+	// windows
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, glass);
+	drawWindows();
+	
+	// wheels
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
+	drawWheels();
+	
+	// lights
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, headlights);
+	drawHeadlights();
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, stoplights);
+	drawStoplights();
+}
+
+void drawPoliceCar() {
+	GLfloat green[] = { 0.09, 0.09, 0.09, 1.0 };
+	GLfloat orange[] = { 1.0, 1.0, 1.0, 1.0 };
+	GLfloat glass[] = { 0.31, 0.76, 0.90, 1.0 };
+	GLfloat black[] = { 0.0, 0.0, 0.0, 1.0 };
+	GLfloat headlights[] = { 0.99, 0.96, 0.69, 1.0 };
+	GLfloat stoplights[] = { 0.74, 0.16, 0.24, 1.0 };
+	GLfloat bluelights[] = { 0.24, 0.16, 0.74, 1.0 };
+	
+	// body
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, green);
+	drawCuboid(0, 0, 0, 20, 5, 10);
+	
+	// upper
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, orange);
+	drawCuboid(0, 5, 0, 10, 5, 10);
+	
+	// windows
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, glass);
+	drawWindows();
+	
+	// wheels
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, black);
+	drawWheels();
+	
+	// lights
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, headlights);
+	drawHeadlights();
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, stoplights);
+	drawStoplights();
+	
+	// police lights
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, orange);
+	// center
+	glBegin(GL_QUADS);
+	
+	// front
+	glVertex3f(1.0, 8.5, 1.0);
+	glVertex3f(1.0, 7.5, 1.0);
+	glVertex3f(1.0, 7.5, -1.0);
+	glVertex3f(1.0, 8.5, -1.0);
+	
+	// top
+	glVertex3f(1.0, 8.5, 1.0);
+	glVertex3f(1.0, 8.5, -1.0);
+	glVertex3f(-1.0, 8.5, -1.0);
+	glVertex3f(-1.0, 8.5, 1.0);
+	
+	// back
+	glVertex3f(-1.0, 8.5, 1.0);
+	glVertex3f(-1.0, 8.5, -1.0);
+	glVertex3f(-1.0, 7.5, -1.0);
+	glVertex3f(-1.0, 7.5, 1.0);
+	
+	glEnd();
+	
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, stoplights);
+	drawCuboid(0, 8, 3, 2, 1, 4);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, bluelights);
+	drawCuboid(0, 8, -3, 2, 1, 4);
+}
+
 void changeSize(int w, int h) {
 	// Prevent a divide by zero, when window is too short
 	// (you cant make a window of zero width).
@@ -267,25 +587,27 @@ void changeSize(int w, int h) {
 }
 
 void drawTree(float r, float g, float b) {
-	glColor3f(1.0f, 1.0f, 1.0f);
 	
 	glTranslated(0, 0.0f, 1.5f);
 	glRotated(-90.0f, 1.0f, 0.0f, 0.0f);
 	
-	glColor3f(0.4627f, 0.3067f, 0.2823f);
+	GLfloat coneColor[4] = {r, g, b, 0.85f};
+	
+	GLfloat body[4] = {0.4627f, 0.3067f, 0.2823f, 0.85f};
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, body);
 	glutSolidCylinder(0.75, 3, 20, 20);
 	
 	glPushMatrix();
 	glTranslated(0.0f, 0.0f, 3.0f);
-	glColor3f(r, g, b);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, coneColor);
 	glutSolidCone(3.0f, 6.0f, 20, 20);
 	
 	glTranslated(0.0f, 0.0f, 2.0f);
-	glColor3f(r, g, b);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, coneColor);
 	glutSolidCone(3.0f, 6.0f, 20, 20);
 	
 	glTranslated(0.0f, 0.0f, 2.0f);
-	glColor3f(r, g, b);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, coneColor);
 	glutSolidCone(3.0f, 6.0f, 20, 20);
 	glPopMatrix();
 }
@@ -347,13 +669,16 @@ void renderTerrain() {
 }
 
 void renderRoad() {
-	glColor3f(0.2, 0.2, 0.2);
+	GLfloat asphalt[4] = {0.2, 0.2, 0.2, 1.0};
+	GLfloat white[4] = {1, 1, 1, 1.0};
+	
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, asphalt);
 	drawCuboid(
 		0, 0, 0,
 		((LANE_COUNT + 2) * (DISCONTINOUS_STRIP_WIDTH + LANE_WIDTH)), 0.5, 1000
 	);
 	
-	glColor3f(1, 1, 1);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, white);
 	
 	for(int p = 0; p < 2; p++) {
 		int orientation_multiplier;
@@ -412,17 +737,49 @@ void renderScene() {
 	// Reset transformations
 	glLoadIdentity();
 	
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_LIGHTING);
+	glEnable(GL_DEPTH_TEST);
+	
+	// sursa de lumina 0
+	glEnable(GL_LIGHT0);
+	GLfloat pozitial0[] = { 1.0, 5.0, 3.0, 0.0 };
+	GLfloat alb[] = { 1.0, 1.0, 1.0, 0.0 };
+	GLfloat negru[] = { 0.0, 0.0, 0.0, 0.0 };
+	glLightfv(GL_LIGHT0, GL_POSITION, pozitial0);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, alb);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, negru);
+	//glLightfv (GL_LIGHT0, GL_DIFFUSE, alb);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, negru);
+	//glLightfv (GL_LIGHT0, GL_SPECULAR, rosu);
+	glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0.1);
+	glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.1);
+	glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.2);
+	
 	gluLookAt(cameraPositionX, cameraPositionY, cameraPositionZ,
 			  cameraPositionX + cameraDirectionX, cameraPositionY + cameraDirectionY, cameraPositionZ + cameraDirectionZ,
 			  0.0f, 1.0f, 0.0f);
 	
 	// Draw the skybox
-	glColor3f(1,1,1);
+	GLfloat white[4] = {1, 1, 1, 1};
+	glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, white);
 	glEnable(GL_TEXTURE_2D);
 	glDepthFunc(GL_LEQUAL);
-	drawSkybox(1000.0f);
+	drawSkybox(500.0f);
 	glDepthFunc(GL_LESS);
 	glDisable(GL_TEXTURE_2D);
+	
+	//efect de ceata
+	GLfloat fogColor[] = { 0.9f, 0.9f, 0.9f, 1.0f }; // culoarea ceții
+	glFogfv(GL_FOG_COLOR, fogColor);
+	glFogi(GL_FOG_MODE, GL_LINEAR); // modul de interpolare liniară a ceții
+	glFogf(GL_FOG_START, 5.0f); // distanța de început a ceții
+	glFogf(GL_FOG_END, 600.0f); // distanța de sfârșit a ceții
+	glEnable(GL_FOG); // activarea ceții
+	
+	//transparenta
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	glEnable(GL_TEXTURE_2D);
 	renderTerrain();
@@ -430,21 +787,77 @@ void renderScene() {
 	
 	renderRoad();
 	
+	// Masina de politie
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2)), 2.15, 20);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(270, 0, 1, 0);
+	drawPoliceCar();
+	glPopMatrix();
+	
+	// Masina sens opus
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2)), 2.15, 50);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(90, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
+	// Masina sens opus
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2)), 2.15, 70);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(90, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
+	// Masina sens opus
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2) + (1 * (LANE_WIDTH + DISCONTINOUS_STRIP_WIDTH))), 2.15, -70);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(90, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
+	// Masina sens opus
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2) + (2 * (LANE_WIDTH + DISCONTINOUS_STRIP_WIDTH))), 2.15, 100);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(90, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
+	// Masina sens opus
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2) - (3 * (LANE_WIDTH + DISCONTINOUS_STRIP_WIDTH))), 2.15, 80);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(90, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
+	// Masina sens opus (BUSITA)
+	glPushMatrix();
+	glTranslated(-((DISCONTINOUS_STRIP_WIDTH / 2) + (LANE_WIDTH / 2) + (4 * (LANE_WIDTH + DISCONTINOUS_STRIP_WIDTH))), 2.15, 100);
+	glScaled(0.5f, 0.5f, 0.5f);
+	glRotated(255, 0, 1, 0);
+	drawCar();
+	glPopMatrix();
+	
 	int offset = (LANE_COUNT / 2) * (DISCONTINOUS_STRIP_WIDTH + LANE_WIDTH) + (2 * LANE_WIDTH);
 
 	Color treeColor = parseRGB(34, 139, 34);
 
 	// Padure dreapta
-	for(int i = 0; i < 10; i++) {
-		for(int j = 0; j < 30; j++) {
+	for(int i = 0; i < 6; i++) {
+		for(int j = 0; j < 20; j++) {
 			glPushMatrix();
 			glTranslated(-offset - i * 30, 0, 15.0f + ((double) j) * 30.0f);
 			drawTree(treeColor.r, treeColor.g, treeColor.b);
 			glPopMatrix();
 		}
 	}
-	for(int i = 0; i < 10; i++) {
-		for(int j = 0; j < 30; j++) {
+	for(int i = 0; i < 6; i++) {
+		for(int j = 0; j < 20; j++) {
 			glPushMatrix();
 			glTranslated(-offset - i * 30, 0, -(15.0f + ((double) j) * 30.0f));
 			drawTree(treeColor.r, treeColor.g, treeColor.b);
@@ -453,16 +866,16 @@ void renderScene() {
 	}
 
 	// Padure stanga
-	for(int i = 0; i < 10; i++) {
-		for(int j = 0; j < 30; j++) {
+	for(int i = 0; i < 6; i++) {
+		for(int j = 0; j < 20; j++) {
 			glPushMatrix();
 			glTranslated(offset + i * 30, 0, 15.0f + ((double) j) * 30.0f);
 			drawTree(treeColor.r, treeColor.g, treeColor.b);
 			glPopMatrix();
 		}
 	}
-	for(int i = 0; i < 10; i++) {
-		for(int j = 0; j < 30; j++) {
+	for(int i = 0; i < 6; i++) {
+		for(int j = 0; j < 20; j++) {
 			glPushMatrix();
 			glTranslated(offset + i * 30, 0, -(15.0f + ((double) j) * 30.0f));
 			drawTree(treeColor.r, treeColor.g, treeColor.b);
@@ -477,7 +890,12 @@ void renderScene() {
 
 void processSpecialKeys(int key, int xx, int yy) {
 	
-	float fraction = 1.0f;
+	float fraction;
+	if(fast) {
+		fraction = 10.0f;
+	} else {
+		fraction = 1.0f;
+	}
 	
 	switch (key) {
 		case GLUT_KEY_LEFT:
@@ -510,6 +928,8 @@ void processNormalKeys(unsigned char key, int x, int y) {
 		processSpecialKeys(GLUT_KEY_DOWN, 0, 0);
 	} else if (key == 'd') {
 		processSpecialKeys(GLUT_KEY_RIGHT, 0, 0);
+	} else if (key == 'f') {
+		fast = !fast;
 	} else if (key == 27) {
 		exit(1);
 	}
